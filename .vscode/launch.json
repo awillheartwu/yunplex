@@ -1,0 +1,17 @@
+
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Debug .mjs file",
+        "runtimeExecutable": "node",
+        "program": "${workspaceFolder}/sync.mjs", // 替换为你的 .mjs 文件路径
+        "outFiles": [],
+        "sourceMaps": true,
+        "protocol": "inspector"
+      }
+    ]
+  }
+  

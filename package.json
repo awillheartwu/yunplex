@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@seald-io/nedb": "^4.0.2",
+    "NeteaseCloudMusicApi": "^4.12.2",
+    "node-fetch": "^3.3.2",
+    "plex-api": "^5.3.2"
+  }
+}
