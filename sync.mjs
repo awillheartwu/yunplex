@@ -9,7 +9,6 @@ import * as path from 'path';
 import NodeID3 from 'node-id3'
 import flacMetadata from 'metaflac-js'
 import dayjs from 'dayjs'
-import { machine } from 'os';
 
 const NodeID3tag = NodeID3.Promise
 const db = new Datastore({ filename: './music.db', autoload: true });
