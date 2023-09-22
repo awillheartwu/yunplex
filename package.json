@@ -1,13 +1,100 @@
 {
-  "dependencies": {
-    "@seald-io/nedb": "^4.0.2",
-    "NeteaseCloudMusicApi": "^4.12.2",
-    "dayjs": "^1.11.10",
-    "metaflac-js": "^1.0.5",
-    "music-metadata": "^8.1.4",
-    "node-fetch": "^3.3.2",
-    "node-id3": "^0.2.6",
-    "plex-api": "^5.3.2",
-    "readline": "^1.3.0"
-  }
+    "name": "yunplex",
+    "version": "1.0.0",
+    "description": "",
+    "private": true,
+    "dependencies": {
+        "@seald-io/nedb": "^4.0.2",
+        "NeteaseCloudMusicApi": "^4.12.2",
+        "dayjs": "^1.11.10",
+        "metaflac-js": "^1.0.5",
+        "music-metadata": "^8.1.4",
+        "node-fetch": "^3.3.2",
+        "node-id3": "^0.2.6",
+        "plex-api": "^5.3.2",
+        "readline": "^1.3.0"
+    },
+    "devDependencies": {
+        "commitizen": "^4.3.0",
+        "cz-conventional-changelog": "^3.3.0",
+        "cz-conventional-changelog-zh": "0.0.2",
+        "eslint": "^8.34.0",
+        "eslint-config-egg": "^7.1.0",
+        "prettier": "^2.8.4",
+        "standard-version": "^9.5.0"
+    },
+    "scripts": {
+        "start": "node ./sync.mjs",
+        "lint": "eslint .",
+        "commit": "git-cz",
+        "release": "standard-version"
+    },
+    "config": {
+        "commitizen": {
+            "path": "./node_modules/cz-conventional-changelog-zh",
+            "defaultType": "[新增功能]",
+            "types": {
+                "[新增功能]": {
+                    "description": "新增功能点、新增需求",
+                    "title": "Features"
+                },
+                "[Bug 修复]": {
+                    "description": "  修复Bug,线上，测试，验收阶段的bug",
+                    "title": "Bug Fixes"
+                },
+                "[文档修改]": {
+                    "description": "文档增删改",
+                    "title": "Documentation"
+                },
+                "[样式修改]": {
+                    "description": "样式修改(空白、格式、缺少分号等)",
+                    "title": "Styles"
+                },
+                "[代码重构]": {
+                    "description": "既不修复bug也不添加新功能的更改",
+                    "title": "Code Refactoring"
+                },
+                "[性能优化]": {
+                    "description": "性能优化",
+                    "title": "Performance Improvements"
+                },
+                "[测试代码]": {
+                    "description": "增加测试",
+                    "title": "Tests"
+                },
+                "[编译代码]": {
+                    "description": "影响构建系统或外部依赖项的更改(示例范围:gulp、broccoli、npm)",
+                    "title": "Builds"
+                },
+                "[持续集成]": {
+                    "description": "对CI配置文件和脚本的更改(示例范围:Travis, Circle, BrowserStack, SauceLabs)",
+                    "title": "Continuous Integrations"
+                },
+                "[其他提交]": {
+                    "description": "除src目录或测试文件以外的修改",
+                    "title": "Chores"
+                },
+                "[回退更改]": {
+                    "description": "回退历史版本",
+                    "title": "Reverts"
+                },
+                "[修改冲突]": {
+                    "description": "修改冲突",
+                    "title": "Conflict"
+                },
+                "[字体修改]": {
+                    "description": "字体文件更新",
+                    "title": "Fonts"
+                },
+                "[删除文件]": {
+                    "description": "删除文件",
+                    "title": "Delete Files"
+                },
+                "[暂存文件]": {
+                    "description": "暂存文件",
+                    "title": "Stash Files"
+                }
+            }
+        }
+    }
 }
