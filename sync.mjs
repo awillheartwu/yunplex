@@ -9,9 +9,22 @@ import * as path from 'path';
 import NodeID3 from 'node-id3'
 import flacMetadata from 'metaflac-js'
 import dayjs from 'dayjs'
+import {spawn} from 'child_process'
 
 const NodeID3tag = NodeID3.Promise
 const db = new Datastore({ filename: './music.db', autoload: true });
+
+
+// 启动子模块
+const submoduleProcess = spawn('yarn', ['start'], {
+  cwd: './NeteaseCloudMusicApi', // 子模块的路径
+  stdio: 'inherit' // 将子模块的输出与当前进程一起显示
+});
+
+submoduleProcess.on('exit', (code, signal) => {
+  console.log(`子模块进程退出，退出码: ${code}`);
+  // 在这里可以执行一些关闭子模块后的操作
+});
 
 async function loginYun(phone, password) {
   try {
@@ -294,7 +307,7 @@ async function main() {
         await client.putQuery(`/playlists/${playlistName[0].ratingKey}/items?uri=server%3A%2F%2F${machineId}%2Fcom.plexapp.plugins.library%2Flibrary%2Fmetadata%2F${localsong[0].ratingKey}&includeExternalMedia=1&`)
         // 获取 playlistItemID
         const syncListNew = await client.query(`/playlists/${playlistName[0].ratingKey}/items`)
-        const playlistItemID = syncListNew.MediaContainer.Metadata.filter(item => item.title.toLocaleLowerCase() === song.name.toLocaleLowerCase())[0]?.playlistItemID ?? 0
+        const playlistItemID = syncListNew.MediaContainer.Metadata.filter(item => item.title === song.name)[0]?.playlistItemID ?? 0
         song.playlistItemID = playlistItemID
       }
     }
@@ -312,3 +325,6 @@ async function main() {
   }
 }
 await main()
+
+// 退出子模块
+submoduleProcess.kill();
