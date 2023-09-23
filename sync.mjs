@@ -16,6 +16,8 @@ const NodeID3tag = NodeID3.Promise;
 const db = new Datastore({ filename: './music.db', autoload: true });
 
 // docker化后，需要读取环境变量
+const SCAN_INTERVAL = process.env.SCAN_INTERVAL ?? 30;
+const SONG_LIMIT = process.env.SONG_LIMIT ?? 10;
 const DOWNLOAD_DIR = process.env.DOWNLOAD_DIR ?? '/mnt/nas';
 const PHONE = process.env.PHONE;
 const PASSWORD = process.env.PASSWORD;
@@ -218,7 +220,7 @@ async function sync(client, selectName, machineId, selectPlaylist) {
     const playlistDetail = await fetch(`https://music.163.com/api/v1/playlist/detail?id=${selectName}`);
     const playlistDetailBody = await playlistDetail.json();
     const playlistDetailSongs = playlistDetailBody.playlist.trackIds
-        .slice(0, 10)
+        .slice(0, SONG_LIMIT)
         .map(item => item.id)
         .join(',');
     const songNames = await fetch(`http://music.163.com/api/song/detail/?id=&ids=[${playlistDetailSongs}]`);
@@ -230,7 +232,7 @@ async function sync(client, selectName, machineId, selectPlaylist) {
     const playlistName = playlist.MediaContainer.Metadata.filter(item => item.title === selectPlaylist);
     const syncList = await client.query(`/playlists/${playlistName[0].ratingKey}/items`);
     // 获取歌单中的前10首
-    const localSongs = syncList.MediaContainer.Metadata.slice(0, 10);
+    const localSongs = syncList.MediaContainer.Metadata.slice(0, SONG_LIMIT);
 
     //比较两边的前10首歌曲，如果有不同的，则需要同步(需要按顺序插入本地歌单)
     const yunSongs = songNamesBodySongs.map(item => item.name);
@@ -368,7 +370,7 @@ async function main() {
         const machineId = res.MediaContainer.machineIdentifier;
 
         // 每30分钟执行一次同步函数
-        const intervalInMilliseconds = 30 * 60 * 1000;
+        const intervalInMilliseconds = SCAN_INTERVAL * 60 * 1000;
         // 执行一次同步函数
         await sync(client, selectName, machineId, selectPlaylist);
         // 设置定时任务
