@@ -10,7 +10,7 @@ import NodeID3 from 'node-id3';
 import flacMetadata from 'metaflac-js';
 import dayjs from 'dayjs';
 import pkg from 'NeteaseCloudMusicApi';
-const { login_cellphone, lyric_new, user_playlist, playlist_detail, song_url_v1 } = pkg;
+const { login_cellphone, lyric_new, user_playlist, /* playlist_detail, */ song_url_v1 } = pkg;
 
 const NodeID3tag = NodeID3.Promise;
 const db = new Datastore({ filename: './music.db', autoload: true });
@@ -150,49 +150,50 @@ async function setupDB() {
             }
         }
 
-        // 查看数据库中是否有歌曲信息
-        const song = await db.findAsync({ type: 'song' });
-        // 如果没有歌曲信息，则需要同步歌曲
-        let selectName = '';
-        if (song.length === 0) {
-            const playlist = await db.findAsync({ type: 'playlist' });
-            const playlistNames = playlist.map(item => `${item.playlistId}(${item.playlistName})`);
-            selectName = PLAYLIST ?? (await getUserInput(`请输入需要同步的歌单编号: ${playlistNames.join(',\n')}: `));
-            // 根据歌单编号获取歌单详细信息
-            const playlistDetail = await playlist_detail({ id: selectName, cookie: user[0].cookie });
-            const playlistDetailBody = playlistDetail.body;
-            //循环获取歌单中的歌曲详细信息,每次 50 个,每个请求之后延迟 500ms
-            let songNamesBodySongs = [];
-            for (let i = 0; i < Math.ceil(playlistDetailBody.playlist.trackIds.length / 50) + 1; i++) {
-                const playlistDetailSongs = playlistDetailBody.playlist.trackIds
-                    .slice(i * 50, (i + 1) * 50)
-                    .map(item => item.id)
-                    .join(',');
-                const songNames = await fetch(`http://music.163.com/api/song/detail/?id=&ids=[${playlistDetailSongs}]`);
-                const songNamesBody = await songNames.json();
-                songNamesBodySongs = songNamesBodySongs.concat(songNamesBody.songs);
-                // 每次请求之后延迟 5s
-                await new Promise((resolve, reject) => {
-                    setTimeout(() => {
-                        resolve();
-                    }, 1500);
-                });
-            }
-            // 将歌曲信息存入数据库
-            console.log('♿️ - file: sync.mjs:32 - main - songNamesBodySongs:', songNamesBodySongs.length);
-            for (let i = 0; i < songNamesBodySongs.length; i++) {
-                await db.insertAsync({
-                    type: 'song',
-                    songName: songNamesBodySongs[i]?.name,
-                    playlistId: selectName,
-                    songId: songNamesBodySongs[i]?.id,
-                    songNamesBody: songNamesBodySongs[i],
-                    created_at: Date.now(),
-                    updated_at: Date.now(),
-                    order: i,
-                });
-            }
-        }
+        // // 查看数据库中是否有歌曲信息
+        // const song = await db.findAsync({ type: 'song' });
+        // // 如果没有歌曲信息，则需要同步歌曲
+        // let selectName = '';
+        // if (song.length === 0) {
+        //     const user = await db.findAsync({ type: 'user' });
+        //     const playlist = await db.findAsync({ type: 'playlist' });
+        //     const playlistNames = playlist.map(item => `${item.playlistId}(${item.playlistName})`);
+        //     selectName = PLAYLIST ?? (await getUserInput(`请输入需要同步的歌单编号: ${playlistNames.join(',\n')}: `));
+        //     // 根据歌单编号获取歌单详细信息
+        //     const playlistDetail = await playlist_detail({ id: selectName, cookie: user[0].cookie });
+        //     const playlistDetailBody = playlistDetail.body;
+        //     //循环获取歌单中的歌曲详细信息,每次 50 个,每个请求之后延迟 500ms
+        //     let songNamesBodySongs = [];
+        //     for (let i = 0; i < Math.ceil(playlistDetailBody.playlist.trackIds.length / 50) + 1; i++) {
+        //         const playlistDetailSongs = playlistDetailBody.playlist.trackIds
+        //             .slice(i * 50, (i + 1) * 50)
+        //             .map(item => item.id)
+        //             .join(',');
+        //         const songNames = await fetch(`http://music.163.com/api/song/detail/?id=&ids=[${playlistDetailSongs}]`);
+        //         const songNamesBody = await songNames.json();
+        //         songNamesBodySongs = songNamesBodySongs.concat(songNamesBody.songs);
+        //         // 每次请求之后延迟 5s
+        //         await new Promise((resolve, reject) => {
+        //             setTimeout(() => {
+        //                 resolve();
+        //             }, 1500);
+        //         });
+        //     }
+        //     // 将歌曲信息存入数据库
+        //     console.log('♿️ - file: sync.mjs:32 - main - songNamesBodySongs:', songNamesBodySongs.length);
+        //     for (let i = 0; i < songNamesBodySongs.length; i++) {
+        //         await db.insertAsync({
+        //             type: 'song',
+        //             songName: songNamesBodySongs[i]?.name,
+        //             playlistId: selectName,
+        //             songId: songNamesBodySongs[i]?.id,
+        //             songNamesBody: songNamesBodySongs[i],
+        //             created_at: Date.now(),
+        //             updated_at: Date.now(),
+        //             order: i,
+        //         });
+        //     }
+        // }
 
         // 数据库获取plex信息
         const plexInfo = await db.findAsync({ type: 'plex' });
@@ -205,7 +206,7 @@ async function setupDB() {
             await db.insertAsync({ type: 'plex', server, port, token });
         }
 
-        return selectName;
+        return true;
     } catch (error) {
         console.log(error);
     }
@@ -319,33 +320,32 @@ async function main() {
         // 首先 load 数据库
         await db.loadDatabaseAsync();
         // 然后初始化数据库
-        const idSelect = await setupDB();
+        await setupDB();
 
         // 获取选择的歌单id
-        let selectName = idSelect;
+        let selectName = '';
         let selectPlaylist = '';
-        if (!idSelect) {
-            const playlist = await db.findAsync({ type: 'playlist' });
-            const playlistNames = playlist.map(item => `${item.playlistId}(${item.playlistName})`);
-            if (playlist.length === 1) {
-                selectName = playlist[0].playlistId;
-                selectPlaylist = playlist[0].playlistName;
-            }
-            // 先读参数，如果没有参数，则需要用户输入
-            selectName =
-                process.argv[2] ??
-                PLAYLIST ??
-                (await getUserInput(`请输入需要同步的歌单编号: ${playlistNames.join(',\n')}: `));
-            console.log('♿️ - file: sync.mjs:32 - main - selectName:', selectName);
-            selectPlaylist = playlist.filter(item => item.playlistId === Number(selectName))[0].playlistName;
+
+        const playlist = await db.findAsync({ type: 'playlist' });
+        const playlistNames = playlist.map(item => `${item.playlistId}(${item.playlistName})`);
+        if (playlist.length === 1) {
+            selectName = playlist[0].playlistId;
+            selectPlaylist = playlist[0].playlistName;
         }
+        // 先读参数，如果没有参数，则需要用户输入
+        selectName =
+            process.argv[2] ??
+            PLAYLIST ??
+            (await getUserInput(`请输入需要同步的歌单编号: ${playlistNames.join(',\n')}: `));
+        console.log('♿️ - file: sync.mjs:32 - main - selectName:', selectName);
+        selectPlaylist = playlist.filter(item => item.playlistId === Number(selectName))[0].playlistName;
 
         // 初始化 Plex
         const plexInfo = await db.findAsync({ type: 'plex' });
         let selectPlex = '';
         if (plexInfo.length > 1) {
             const plexNames = plexInfo.map(item => `${item._id}(${item.server})`);
-            const select = await getUserInput(`请输入需要同步的Plex编号: ${plexNames.join(',\n')}: `);
+            const select = await getUserInput(`请输入需要同步的Plex服务器编号: ${plexNames.join(',\n')}: `);
             selectPlex = plexInfo.filter(item => String(item._id) === select)[0];
         } else {
             selectPlex = plexInfo[0];
