@@ -24,7 +24,7 @@ const PLEX_PORT = process.env.PLEX_PORT;
 const PLEX_TOKEN = process.env.PLEX_TOKEN;
 
 // 启动子模块
-const submoduleProcess = spawn('yarn', ['start'], {
+const submoduleProcess = spawn('npm', ['start'], {
     cwd: './NeteaseCloudMusicApi', // 子模块的路径
     // stdio: 'inherit', // 将子模块的输出与当前进程一起显示
 });
