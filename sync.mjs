@@ -224,6 +224,111 @@ async function setupDB() {
     }
 }
 
+async function sync(client, selectName, machineId, selectPlaylist) {
+    console.log('♿️ - file: sync.mjs:32 - main - sync - 开始同步');
+    // 初始化获取两边歌单
+    const playlistDetail = await fetch(`https://music.163.com/api/v1/playlist/detail?id=${selectName}`);
+    const playlistDetailBody = await playlistDetail.json();
+    const playlistDetailSongs = playlistDetailBody.playlist.trackIds
+        .slice(0, 10)
+        .map(item => item.id)
+        .join(',');
+    const songNames = await fetch(`http://music.163.com/api/song/detail/?id=&ids=[${playlistDetailSongs}]`);
+    const songNamesBody = await songNames.json();
+    const songNamesBodySongs = songNamesBody.songs;
+
+    /* 查找同名歌单 */
+    const playlist = await client.query('/playlists');
+    const playlistName = playlist.MediaContainer.Metadata.filter(item => item.title === selectPlaylist);
+    const syncList = await client.query(`/playlists/${playlistName[0].ratingKey}/items`);
+    // 获取歌单中的前10首
+    const localSongs = syncList.MediaContainer.Metadata.slice(0, 10);
+
+    //比较两边的前10首歌曲，如果有不同的，则需要同步(需要按顺序插入本地歌单)
+    const yunSongs = songNamesBodySongs.map(item => item.name);
+    const plexSongs = localSongs.map(item => item.title);
+    //songNamesBodySongs
+    console.log('♿️ - file: sync.mjs:32 - main - songNamesBodySongs:', yunSongs);
+    //localSongs
+    console.log('♿️ - file: sync.mjs:32 - main - localSongs:', plexSongs);
+
+    let yunLastIndex = 0;
+    let plexLastIndex = 0;
+    for (let i = yunSongs.length - 1; i >= 0; i--) {
+        const name = yunSongs[i];
+        if (plexSongs.includes(name)) {
+            yunLastIndex = yunSongs.indexOf(name);
+            plexLastIndex = plexSongs.indexOf(name);
+            break;
+        }
+    }
+    console.log('♿️ - file: sync.mjs:32 - main - yunLastIndex:', yunLastIndex);
+    const slicePlexSongs = plexSongs.slice(0, plexLastIndex + 1);
+
+    // 给云音乐的歌曲设置标识，如果plex中有，则不同步
+    const user = await db.findAsync({ type: 'user' });
+    const syncSongs = await Promise.all(
+        songNamesBodySongs.map(async item => {
+            if (slicePlexSongs.includes(item.name)) {
+                item.sync = true;
+            } else {
+                item.sync = false;
+                console.log('♿️ - file: sync.mjs:32 - main - item:', item.name);
+                const song = await fetch(
+                    `http://localhost:3000/song/url/v1?id=${item.id}&level=jymaster&cookie=${user[0].cookie}`
+                );
+                const songBody = await song.json();
+                // 下载歌曲
+                await download(songBody.data[0].url, item, songBody.data[0].type);
+            }
+            return item;
+        })
+    );
+
+    // 命令plex刷新音乐资料库
+    // 先获取section的key
+    const sections = await client.query('/library/sections');
+    const musicSection = sections.MediaContainer.Directory.filter(item => item.type === 'artist')[0];
+    await client.query(`/library/sections/${musicSection.key}/refresh`);
+
+    // 等待扫描完毕 1分钟
+    await new Promise((resolve, reject) => {
+        setTimeout(() => {
+            resolve();
+        }, 60000);
+    });
+
+    // 然后按照顺序插入歌单
+    for (let i = 0; i < syncSongs.length; i++) {
+        const song = syncSongs[i];
+        if (!song.sync) {
+            const localsong = await client.find(
+                `/library/sections/${musicSection.key}/search?type=10&title=${encodeURIComponent(song.name)}`
+            );
+            await client.putQuery(
+                `/playlists/${playlistName[0].ratingKey}/items?uri=server%3A%2F%2F${machineId}%2Fcom.plexapp.plugins.library%2Flibrary%2Fmetadata%2F${localsong[0].ratingKey}&includeExternalMedia=1&`
+            );
+            // 获取 playlistItemID
+            const syncListNew = await client.query(`/playlists/${playlistName[0].ratingKey}/items`);
+            const playlistItemID =
+                syncListNew.MediaContainer.Metadata.filter(item => item.title === song.name)[0]?.playlistItemID ?? 0;
+            song.playlistItemID = playlistItemID;
+            console.log(song.name, playlistItemID);
+        }
+    }
+
+    // 倒着插回去，这样才能保持顺序
+    for (let i = syncSongs.length - 1; i >= 0; i--) {
+        const song = syncSongs[i];
+        if (!song.sync && song.playlistItemID) {
+            // 挪到最前面
+            await client.putQuery(`/playlists/${playlistName[0].ratingKey}/items/${song.playlistItemID}/move`);
+        }
+    }
+
+    console.log('♿️ - file: sync.mjs:32 - main - sync - 同步完成');
+}
+
 async function main() {
     try {
         // 首先 load 数据库
@@ -250,17 +355,7 @@ async function main() {
             selectPlaylist = playlist.filter(item => item.playlistId === Number(selectName))[0].playlistName;
         }
 
-        // 初始化获取两边歌单
-        const playlistDetail = await fetch(`https://music.163.com/api/v1/playlist/detail?id=${selectName}`);
-        const playlistDetailBody = await playlistDetail.json();
-        const playlistDetailSongs = playlistDetailBody.playlist.trackIds
-            .slice(0, 10)
-            .map(item => item.id)
-            .join(',');
-        const songNames = await fetch(`http://music.163.com/api/song/detail/?id=&ids=[${playlistDetailSongs}]`);
-        const songNamesBody = await songNames.json();
-        const songNamesBodySongs = songNamesBody.songs;
-
+        // 初始化 Plex
         const plexInfo = await db.findAsync({ type: 'plex' });
         let selectPlex = '';
         if (plexInfo.length > 1) {
@@ -287,110 +382,28 @@ async function main() {
         const res = await client.query('/');
         const machineId = res.MediaContainer.machineIdentifier;
 
-        /* 查找同名歌单 */
-        const playlist = await client.query('/playlists');
-        const playlistName = playlist.MediaContainer.Metadata.filter(item => item.title === selectPlaylist);
-        const syncList = await client.query(`/playlists/${playlistName[0].ratingKey}/items`);
-        // const titles = syncList.MediaContainer.Metadata.map(item => item.title)
-        // 获取歌单中的前10首
-        const localSongs = syncList.MediaContainer.Metadata.slice(0, 10);
-
-        //比较两边的前10首歌曲，如果有不同的，则需要同步(需要按顺序插入本地歌单)
-        const yunSongs = songNamesBodySongs.map(item => item.name);
-        const plexSongs = localSongs.map(item => item.title);
-        //songNamesBodySongs
-        console.log('♿️ - file: sync.mjs:32 - main - songNamesBodySongs:', yunSongs);
-        //localSongs
-        console.log('♿️ - file: sync.mjs:32 - main - localSongs:', plexSongs);
-
-        let yunLastIndex = 0;
-        let plexLastIndex = 0;
-        for (let i = yunSongs.length - 1; i >= 0; i--) {
-            const name = yunSongs[i];
-            if (plexSongs.includes(name)) {
-                yunLastIndex = yunSongs.indexOf(name);
-                plexLastIndex = plexSongs.indexOf(name);
-                break;
-            }
-        }
-        console.log('♿️ - file: sync.mjs:32 - main - yunLastIndex:', yunLastIndex);
-        const slicePlexSongs = plexSongs.slice(0, plexLastIndex + 1);
-
-        // 给云音乐的歌曲设置标识，如果plex中有，则不同步
-        const user = await db.findAsync({ type: 'user' });
-        const syncSongs = await Promise.all(
-            songNamesBodySongs.map(async item => {
-                if (slicePlexSongs.includes(item.name)) {
-                    item.sync = true;
-                } else {
-                    item.sync = false;
-                    console.log('♿️ - file: sync.mjs:32 - main - item:', item.name);
-                    const song = await fetch(
-                        `http://localhost:3000/song/url/v1?id=${item.id}&level=jymaster&cookie=${user[0].cookie}`
-                    );
-                    const songBody = await song.json();
-                    // 下载歌曲
-                    await download(songBody.data[0].url, item, songBody.data[0].type);
-                }
-                return item;
-            })
-        );
-
-        // 命令plex刷新音乐资料库
-        // 先获取section的key
-        const sections = await client.query('/library/sections');
-        const musicSection = sections.MediaContainer.Directory.filter(item => item.type === 'artist')[0];
-        await client.query(`/library/sections/${musicSection.key}/refresh`);
-
-        // 等待扫描完毕 1分钟
-        await new Promise((resolve, reject) => {
-            setTimeout(() => {
-                resolve();
-            }, 60000);
-        });
-
-        // 然后按照顺序插入歌单
-        for (let i = 0; i < syncSongs.length; i++) {
-            const song = syncSongs[i];
-            if (!song.sync) {
-                const localsong = await client.find(
-                    `/library/sections/${musicSection.key}/search?type=10&title=${encodeURIComponent(song.name)}`
-                );
-                await client.putQuery(
-                    `/playlists/${playlistName[0].ratingKey}/items?uri=server%3A%2F%2F${machineId}%2Fcom.plexapp.plugins.library%2Flibrary%2Fmetadata%2F${localsong[0].ratingKey}&includeExternalMedia=1&`
-                );
-                // 获取 playlistItemID
-                const syncListNew = await client.query(`/playlists/${playlistName[0].ratingKey}/items`);
-                const playlistItemID =
-                    syncListNew.MediaContainer.Metadata.filter(item => item.title === song.name)[0]?.playlistItemID ??
-                    0;
-                song.playlistItemID = playlistItemID;
-                console.log(song.name, playlistItemID);
-            }
-        }
-
-        // 倒着插回去，这样才能保持顺序
-        for (let i = syncSongs.length - 1; i >= 0; i--) {
-            const song = syncSongs[i];
-            if (!song.sync && song.playlistItemID) {
-                // 挪到最前面
-                await client.putQuery(`/playlists/${playlistName[0].ratingKey}/items/${song.playlistItemID}/move`);
-            }
-        }
+        // 每30分钟执行一次同步函数
+        const intervalInMilliseconds = 30 * 60 * 1000;
+        // 执行一次同步函数
+        await sync(client, selectName, machineId, selectPlaylist);
+        // 设置定时任务
+        setInterval(async () => {
+            await sync(client, selectName, machineId, selectPlaylist);
+        }, intervalInMilliseconds);
     } catch (error) {
         console.log(error);
+        // 退出子模块
+        submoduleProcess.kill('SIGINT');
+
+        // 杀死占用 3000 端口的进程
+        exec('lsof -ti :3000 | xargs kill', (error, stdout, stderr) => {
+            if (error) {
+                console.error(`执行命令时出错: ${error}`);
+                return;
+            }
+            console.log(`进程已成功终止: ${stdout}`);
+        });
     }
 }
+
 await main();
-
-// 退出子模块
-submoduleProcess.kill('SIGINT');
-
-// 杀死占用 3000 端口的进程
-exec('lsof -ti :3000 | xargs kill', (error, stdout, stderr) => {
-    if (error) {
-        console.error(`执行命令时出错: ${error}`);
-        return;
-    }
-    console.log(`进程已成功终止: ${stdout}`);
-});
