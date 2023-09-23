@@ -9,19 +9,28 @@ import * as path from 'path';
 import NodeID3 from 'node-id3';
 import flacMetadata from 'metaflac-js';
 import dayjs from 'dayjs';
-import { spawn } from 'child_process';
+import { exec, spawn } from 'child_process';
 
 const NodeID3tag = NodeID3.Promise;
 const db = new Datastore({ filename: './music.db', autoload: true });
 
+// docker化后，需要读取环境变量
+const DOWNLOAD_DIR = process.env.DOWNLOAD_DIR ?? '/mnt/nas';
+const PHONE = process.env.PHONE;
+const PASSWORD = process.env.PASSWORD;
+const PLAYLIST = process.env.PLAYLIST;
+const PLEX_SERVER = process.env.PLEX_SERVER;
+const PLEX_PORT = process.env.PLEX_PORT;
+const PLEX_TOKEN = process.env.PLEX_TOKEN;
+
 // 启动子模块
 const submoduleProcess = spawn('yarn', ['start'], {
     cwd: './NeteaseCloudMusicApi', // 子模块的路径
-    stdio: 'inherit', // 将子模块的输出与当前进程一起显示
+    // stdio: 'inherit', // 将子模块的输出与当前进程一起显示
 });
 
 submoduleProcess.on('exit', (code, signal) => {
-    console.log(`子模块进程退出，退出码: ${code}`);
+    console.log(`子模块进程退出，退出码: ${code}, 退出信号: ${signal}`);
     // 在这里可以执行一些关闭子模块后的操作
 });
 
@@ -52,7 +61,7 @@ async function getUserInput(prompt) {
 async function download(url, songInfo, type) {
     // 保存到本地，并保留歌曲的tag信息
     const title = songInfo.name;
-    const artist = songInfo.artists.map(item => item.name).join(',');
+    const artist = songInfo.artists.map(item => item.name).join('&');
     const album = songInfo.album.name;
     const year = dayjs(songInfo.album.publishTime).format('YYYY');
     const trackNumber = songInfo.no;
@@ -60,7 +69,7 @@ async function download(url, songInfo, type) {
     const imageBuffer = await imageDown.arrayBuffer(); // 读取为 ArrayBuffer
 
     // 查看目录下是否有 /artist/album/ 文件夹,如果没有则创建
-    const albumPath = path.join(/*path.resolve()*/ '/mnt/nas', `./${artist}/${album}`);
+    const albumPath = path.join(DOWNLOAD_DIR, `/${artist}/${album}`);
     if (!fs.existsSync(albumPath)) fs.mkdirSync(albumPath, { recursive: true });
 
     // 创建文件夹并下载歌曲
@@ -85,7 +94,9 @@ async function download(url, songInfo, type) {
         flac.setTag(`TRACKNUMBER=${trackNumber}`);
         flac.setTag(`YEAR=${year}`);
         flac.setTag(`PERFORMERINFO=${artist}`);
-        flac.importPictureFromBuffer(Buffer.from(imageBuffer));
+        if (imageBuffer) {
+            flac.importPictureFromBuffer(Buffer.from(imageBuffer));
+        }
 
         await flac.save();
     } else {
@@ -116,8 +127,8 @@ async function setupDB() {
         // 如果没有用户信息，进入初始化流程
         if (user.length === 0) {
             // 如果没有用户信息，则通过获得用户命令行的信息，登录云音乐
-            const phone = await getUserInput('请输入登录网易云的手机号: ');
-            const password = await getUserInput('请输入登录网易云的密码: ');
+            const phone = PHONE ?? (await getUserInput('请输入登录网易云的手机号: '));
+            const password = PASSWORD ?? (await getUserInput('请输入登录网易云的密码: '));
             const user = await loginYun(phone, encodeURIComponent(password));
             // 将用户信息存入数据库
             await db.insertAsync({
@@ -130,6 +141,7 @@ async function setupDB() {
                 password,
             });
         }
+
         // 查看数据库中是否有歌单信息
         const playlist = await db.findAsync({ type: 'playlist' });
         // 如果没有歌单信息，则需要同步歌单
@@ -150,6 +162,7 @@ async function setupDB() {
                 });
             }
         }
+
         // 查看数据库中是否有歌曲信息
         const song = await db.findAsync({ type: 'song' });
         // 如果没有歌曲信息，则需要同步歌曲
@@ -157,7 +170,7 @@ async function setupDB() {
         if (song.length === 0) {
             const playlist = await db.findAsync({ type: 'playlist' });
             const playlistNames = playlist.map(item => `${item.playlistId}(${item.playlistName})`);
-            selectName = await getUserInput(`请输入需要同步的歌单编号: ${playlistNames.join(',\n')}: `);
+            selectName = PLAYLIST ?? (await getUserInput(`请输入需要同步的歌单编号: ${playlistNames.join(',\n')}: `));
             // 根据歌单编号获取歌单详细信息
             const playlistDetail = await fetch(`http://localhost:3000/playlist/detail?id=${selectName}`);
             const playlistDetailBody = await playlistDetail.json();
@@ -178,8 +191,7 @@ async function setupDB() {
                     }, 1500);
                 });
             }
-
-            // 将歌曲信息存入数据库 49061121
+            // 将歌曲信息存入数据库
             console.log('♿️ - file: sync.mjs:32 - main - songNamesBodySongs:', songNamesBodySongs.length);
             for (let i = 0; i < songNamesBodySongs.length; i++) {
                 await db.insertAsync({
@@ -194,16 +206,18 @@ async function setupDB() {
                 });
             }
         }
+
         // 数据库获取plex信息
         const plexInfo = await db.findAsync({ type: 'plex' });
         if (!plexInfo.length) {
             // 如果没有plex信息，则需要同步歌曲
-            const server = await getUserInput('请输入Plex的地址: ');
-            const port = await getUserInput('请输入Plex的端口: ');
-            const token = await getUserInput('请输入Plex的token: ');
+            const server = PLEX_SERVER ?? (await getUserInput('请输入Plex的地址: '));
+            const port = PLEX_PORT ?? (await getUserInput('请输入Plex的端口: '));
+            const token = PLEX_TOKEN ?? (await getUserInput('请输入Plex的token: '));
             // 将歌单信息存入数据库
             await db.insertAsync({ type: 'plex', server, port, token });
         }
+
         return selectName;
     } catch (error) {
         console.log(error);
@@ -227,7 +241,12 @@ async function main() {
                 selectName = playlist[0].playlistId;
                 selectPlaylist = playlist[0].playlistName;
             }
-            selectName = await getUserInput(`请输入需要同步的歌单编号: ${playlistNames.join(',\n')}: `);
+            // 先读参数，如果没有参数，则需要用户输入
+            selectName =
+                process.argv[2] ??
+                PLAYLIST ??
+                (await getUserInput(`请输入需要同步的歌单编号: ${playlistNames.join(',\n')}: `));
+            console.log('♿️ - file: sync.mjs:32 - main - selectName:', selectName);
             selectPlaylist = playlist.filter(item => item.playlistId === Number(selectName))[0].playlistName;
         }
 
@@ -346,9 +365,11 @@ async function main() {
                     syncListNew.MediaContainer.Metadata.filter(item => item.title === song.name)[0]?.playlistItemID ??
                     0;
                 song.playlistItemID = playlistItemID;
+                console.log(song.name, playlistItemID);
             }
         }
 
+        // 倒着插回去，这样才能保持顺序
         for (let i = syncSongs.length - 1; i >= 0; i--) {
             const song = syncSongs[i];
             if (!song.sync && song.playlistItemID) {
@@ -363,4 +384,13 @@ async function main() {
 await main();
 
 // 退出子模块
-submoduleProcess.kill();
+submoduleProcess.kill('SIGINT');
+
+// 杀死占用 3000 端口的进程
+exec('lsof -ti :3000 | xargs kill', (error, stdout, stderr) => {
+    if (error) {
+        console.error(`执行命令时出错: ${error}`);
+        return;
+    }
+    console.log(`进程已成功终止: ${stdout}`);
+});
