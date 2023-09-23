@@ -9,7 +9,8 @@ import * as path from 'path';
 import NodeID3 from 'node-id3';
 import flacMetadata from 'metaflac-js';
 import dayjs from 'dayjs';
-import { exec, spawn } from 'child_process';
+import pkg from 'NeteaseCloudMusicApi';
+const { login_cellphone, lyric_new, user_playlist, playlist_detail, song_url_v1 } = pkg;
 
 const NodeID3tag = NodeID3.Promise;
 const db = new Datastore({ filename: './music.db', autoload: true });
@@ -23,25 +24,9 @@ const PLEX_SERVER = process.env.PLEX_SERVER;
 const PLEX_PORT = process.env.PLEX_PORT;
 const PLEX_TOKEN = process.env.PLEX_TOKEN;
 
-// 启动子模块
-const submoduleProcess = spawn('npm', ['start'], {
-    cwd: './NeteaseCloudMusicApi', // 子模块的路径
-    stdio: 'inherit', // 将子模块的输出与当前进程一起显示
-});
-
-submoduleProcess.on('exit', (code, signal) => {
-    console.log(`子模块进程退出，退出码: ${code}, 退出信号: ${signal}`);
-    // 在这里可以执行一些关闭子模块后的操作
-});
-
 async function loginYun(phone, password) {
-    try {
-        const login = await fetch(`http://localhost:3000/login/cellphone?phone=${phone}&password=${password}`);
-        const body = await login.json();
-        return body;
-    } catch (error) {
-        console.log(error);
-    }
+    const result = await login_cellphone({ phone, password });
+    return result.body;
 }
 
 async function getUserInput(prompt) {
@@ -58,7 +43,7 @@ async function getUserInput(prompt) {
     });
 }
 
-async function download(url, songInfo, type) {
+async function download(url, songInfo, type, cookie) {
     // 保存到本地，并保留歌曲的tag信息
     const title = songInfo.name;
     const artist = songInfo.artists.map(item => item.name).join('&');
@@ -80,9 +65,9 @@ async function download(url, songInfo, type) {
     // 同步写入文件
     await fs.writeFileSync(path.join(albumPath, `${title}.${type}`), newBuffer);
     // 下载歌词
-    const lyricDown = await fetch(`http://localhost:3000/lyric?id=${songInfo.id}`);
-    const lyricBody = await lyricDown.json();
-    await fs.writeFileSync(path.join(albumPath, `${title}.lrc`), lyricBody.lrc.lyric);
+    const lyricDownNew = await lyric_new({ id: songInfo.id, cookie: cookie });
+    const lyricBodyNew = lyricDownNew.body;
+    await fs.writeFileSync(path.join(albumPath, `${title}.lrc`), lyricBodyNew.lrc.lyric);
 
     // 写入tags,判断是否为flac
     const pathName = path.join(albumPath, `${title}.${type}`);
@@ -129,7 +114,7 @@ async function setupDB() {
             // 如果没有用户信息，则通过获得用户命令行的信息，登录云音乐
             const phone = PHONE ?? (await getUserInput('请输入登录网易云的手机号: '));
             const password = PASSWORD ?? (await getUserInput('请输入登录网易云的密码: '));
-            const user = await loginYun(phone, encodeURIComponent(password));
+            const user = await loginYun(phone, password);
             // 将用户信息存入数据库
             await db.insertAsync({
                 type: 'user',
@@ -147,10 +132,12 @@ async function setupDB() {
         // 如果没有歌单信息，则需要同步歌单
         if (playlist.length === 0) {
             const user = await db.findAsync({ type: 'user' });
-            const playlists = await fetch(
-                `http://localhost:3000/user/playlist?uid=${user[0].uid}&limit=50&cookie=${user[0].cookie}`
-            );
-            const playlistsBody = await playlists.json();
+            const playlists = await user_playlist({
+                uid: user[0].uid,
+                limit: 50,
+                cookie: user[0].cookie,
+            });
+            const playlistsBody = playlists.body;
             const playlistNames = playlistsBody.playlist.map(item => item.name);
             // 将歌单信息存入数据库
             for (let i = 0; i < playlistNames.length; i++) {
@@ -172,8 +159,8 @@ async function setupDB() {
             const playlistNames = playlist.map(item => `${item.playlistId}(${item.playlistName})`);
             selectName = PLAYLIST ?? (await getUserInput(`请输入需要同步的歌单编号: ${playlistNames.join(',\n')}: `));
             // 根据歌单编号获取歌单详细信息
-            const playlistDetail = await fetch(`http://localhost:3000/playlist/detail?id=${selectName}`);
-            const playlistDetailBody = await playlistDetail.json();
+            const playlistDetail = await playlist_detail({ id: selectName, cookie: user[0].cookie });
+            const playlistDetailBody = playlistDetail.body;
             //循环获取歌单中的歌曲详细信息,每次 50 个,每个请求之后延迟 500ms
             let songNamesBodySongs = [];
             for (let i = 0; i < Math.ceil(playlistDetailBody.playlist.trackIds.length / 50) + 1; i++) {
@@ -274,12 +261,10 @@ async function sync(client, selectName, machineId, selectPlaylist) {
             } else {
                 item.sync = false;
                 console.log('♿️ - file: sync.mjs:32 - main - item:', item.name);
-                const song = await fetch(
-                    `http://localhost:3000/song/url/v1?id=${item.id}&level=jymaster&cookie=${user[0].cookie}`
-                );
-                const songBody = await song.json();
+                const song = await song_url_v1({ id: item.id, level: 'jymaster', cookie: user[0].cookie });
+                const songBody = song.body;
                 // 下载歌曲
-                await download(songBody.data[0].url, item, songBody.data[0].type);
+                await download(songBody.data[0].url, item, songBody.data[0].type, user[0].cookie);
             }
             return item;
         })
@@ -392,17 +377,6 @@ async function main() {
         }, intervalInMilliseconds);
     } catch (error) {
         console.log(error);
-        // 退出子模块
-        submoduleProcess.kill('SIGINT');
-
-        // 杀死占用 3000 端口的进程
-        exec('lsof -ti :3000 | xargs kill', (error, stdout, stderr) => {
-            if (error) {
-                console.error(`执行命令时出错: ${error}`);
-                return;
-            }
-            console.log(`进程已成功终止: ${stdout}`);
-        });
     }
 }
 

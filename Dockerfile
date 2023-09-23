@@ -16,8 +16,5 @@ ENV PLEX_SERVER ""
 ENV PLEX_PORT ""
 ENV PLEX_TOKEN ""
 
-# 暴露应用程序需要的端口
-EXPOSE 4396
-
 # 启动应用程序
 CMD ["npm", "start"]
