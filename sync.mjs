@@ -232,7 +232,7 @@ async function sync(client, selectName, machineId, selectPlaylist) {
     const playlistName = playlist.MediaContainer.Metadata.filter(item => item.title === selectPlaylist);
     const syncList = await client.query(`/playlists/${playlistName[0].ratingKey}/items`);
     // 获取歌单中的前10首
-    const localSongs = syncList.MediaContainer.Metadata.slice(0, SONG_LIMIT);
+    const localSongs = syncList?.MediaContainer?.Metadata?.slice(0, SONG_LIMIT) ?? [];
 
     //比较两边的前10首歌曲，如果有不同的，则需要同步(需要按顺序插入本地歌单)
     const yunSongs = songNamesBodySongs.map(item => item.name);
