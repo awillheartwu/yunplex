@@ -31,7 +31,7 @@ $ npm install # 或者使用 yarn cnpm pnpm 随你的大小便
 ### 本地部署版本
 
 ```bash
-$ node sync.js # 可以添加第二个参数，代表要同步的网易云歌单的id，不添加的话会询问
+$ node sync.mjs # 可以添加第二个参数，代表要同步的网易云歌单的id，不添加的话会询问
 ```
 
 初次调用会询问
@@ -44,7 +44,8 @@ $ node sync.js # 可以添加第二个参数，代表要同步的网易云歌单
 
 输入后会打印plex和网易云的歌单列表，选择要同步的歌单的序号，回车即可开始同步
 
-之后服务会常驻后台，每隔30分钟会自动同步一次
+之后服务会一直轮询，每隔30分钟会自动同步一次
+_（如果是第二次打开，可以直接用`node sync.mjs xxx &`这样使之一直在后台运行）_
 
 ### Docker版本
 
@@ -60,6 +61,7 @@ $ docker run -d --name yunplex yunplex  \
     -e PLEX_SERVER=your_plex_server \ # Plex服务器地址
     -e PLEX_PORT=your_plex_port \ # Plex服务器端口
     -e PLEX_TOKEN=your_plex_token \ # Plex服务器token
+    -v /mnt/nas:/mnt/nas \ # 下载歌曲的目录
 ```
 
 ## TODO
