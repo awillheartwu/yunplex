@@ -55,14 +55,14 @@ $ docker pull awillheartwu/yunplex:v1.0
 $ docker run -d --name yunplex yunplex  \
     -e SCAN_INTERVAL=30 \ # 轮询间隔，单位分钟 
     -e SONG_LIMIT=10 \ # 对比歌单的歌曲数量
-    -e DOWNLOAD_DIR=/mnt/nas \ # 下载歌曲的目录
+    -e DOWNLOAD_DIR=/mnt/nas \ # 下载歌曲到docker内部的目录
     -e PHONE=your_phone \ # 网易云账号
     -e PASSWORD=your_password \ # 网易云密码
     -e PLAYLIST=your_playlist \ # 要同步的网易云歌单id
     -e PLEX_SERVER=your_plex_server \ # Plex服务器地址
     -e PLEX_PORT=your_plex_port \ # Plex服务器端口
     -e PLEX_TOKEN=your_plex_token \ # Plex服务器token
-    -v /mnt/nas:/mnt/nas \ # 下载歌曲的目录
+    -v /mnt/nas:/mnt/nas \ # 冒号前面是宿主机的目录（也就是你plex音乐库的目录），冒号后面是docker内部的目录
 ```
 
 ## TODO
