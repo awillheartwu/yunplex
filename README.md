@@ -47,10 +47,11 @@ $ node sync.mjs # 可以添加第二个参数，代表要同步的网易云歌�
 之后服务会一直轮询，每隔30分钟会自动同步一次
 _（如果是第二次打开，可以直接用`node sync.mjs xxx &`这样使之一直在后台运行）_
 
-### Docker版本
+### Docker版本（推荐）
 
 ```bash
-$ docker build -t yunplex .
+$ # docker build -t yunplex . 最新版本已经上传到docker hub，可以直接拉取
+$ docker pull awillheartwu/yunplex:v1.0
 $ docker run -d --name yunplex yunplex  \
     -e SCAN_INTERVAL=30 \ # 轮询间隔，单位分钟 
     -e SONG_LIMIT=10 \ # 对比歌单的歌曲数量
