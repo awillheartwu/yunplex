@@ -55,7 +55,7 @@ _（如果是第二次打开，可以直接用`node sync.mjs xxx &`这样使之�
 
 ```bash
 $ # docker build -t yunplex . 最新版本已经上传到docker hub，可以直接拉取
-$ docker pull awillheartwu/yunplex:v1.0
+$ docker pull neverlosewu/yunplex:v1.0
 $ docker run -d --name yunplex yunplex  \
     -e SCAN_INTERVAL=30 \ # 轮询间隔，单位分钟 
     -e SONG_LIMIT=10 \ # 对比歌单的歌曲数量
