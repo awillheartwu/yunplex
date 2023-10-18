@@ -81,8 +81,13 @@ async function download(url, songInfo, type, cookie) {
         flac.setTag(`TRACKNUMBER=${trackNumber}`);
         flac.setTag(`YEAR=${year}`);
         flac.setTag(`PERFORMERINFO=${artist}`);
-        if (imageBuffer) {
+
+        const MAX_SIZE = 16777215; // 16.7 MB in bytes
+        if (imageBuffer && imageBuffer.byteLength <= MAX_SIZE) {
+            console.log(' imageBuffer.byteLength', imageBuffer.byteLength);
             flac.importPictureFromBuffer(Buffer.from(imageBuffer));
+        } else {
+            console.warn('Image is too large. Skipping adding image to FLAC.');
         }
 
         await flac.save();
@@ -229,7 +234,7 @@ async function sync(client, selectName, machineId, selectPlaylist) {
 
     /* 查找同名歌单 */
     const playlist = await client.query('/playlists');
-    console.log('♿️ - file: sync.mjs:32 - main - sync - playlist:', playlist.MediaContainer.Metadata)
+    console.log('♿️ - file: sync.mjs:32 - main - sync - playlist:', playlist.MediaContainer.Metadata);
     const playlistName = playlist.MediaContainer.Metadata.filter(item => item.title === selectPlaylist);
     if (!playlistName.length) {
         console.log('♿️ - file: sync.mjs:32 - main - sync - 未找到同名歌单');
@@ -302,10 +307,13 @@ async function sync(client, selectName, machineId, selectPlaylist) {
         const song = syncSongs[i];
         if (!song.sync) {
             const localsong = await client.find(
-                `/library/sections/${musicSection.key}/search?type=10&title=${encodeURIComponent(song.name)}`
+                `/library/sections/${musicSection.key}/search?type=10&title=${encodeURIComponent(
+                    song.name
+                )}&grandparentTitle=${encodeURIComponent(song.artists.map(item => item.name).join('&'))}`
             );
+            const findSong = localsong.find(item => item.title === song.name && item.grandparentTitle === song.artists.map(item => item.name).join('&') && item.parentTitle === song.album.name) ?? localsong[0]
             await client.putQuery(
-                `/playlists/${playlistName[0].ratingKey}/items?uri=server%3A%2F%2F${machineId}%2Fcom.plexapp.plugins.library%2Flibrary%2Fmetadata%2F${localsong[0].ratingKey}&includeExternalMedia=1&`
+                `/playlists/${playlistName[0].ratingKey}/items?uri=server%3A%2F%2F${machineId}%2Fcom.plexapp.plugins.library%2Flibrary%2Fmetadata%2F${findSong.ratingKey}&includeExternalMedia=1&`
             );
             // 获取 playlistItemID
             const syncListNew = await client.query(`/playlists/${playlistName[0].ratingKey}/items`);
