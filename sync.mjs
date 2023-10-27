@@ -32,13 +32,13 @@ async function loginYun(phone, password) {
 }
 
 async function getUserInput(prompt) {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
         const readlines = readline.createInterface({
             input: process.stdin,
             output: process.stdout,
         });
 
-        readlines.question(prompt, input => {
+        readlines.question(prompt, (input) => {
             readlines.close();
             resolve(input);
         });
@@ -48,7 +48,7 @@ async function getUserInput(prompt) {
 async function download(url, songInfo, type, cookie) {
     // 保存到本地，并保留歌曲的tag信息
     const title = songInfo.name;
-    const artist = songInfo.artists.map(item => item.name).join('&');
+    const artist = songInfo.artists.map((item) => item.name).join('&');
     const album = songInfo.album.name;
     const year = dayjs(songInfo.album.publishTime).format('YYYY');
     const trackNumber = songInfo.no;
@@ -145,7 +145,7 @@ async function setupDB() {
                 cookie: user[0].cookie,
             });
             const playlistsBody = playlists.body;
-            const playlistNames = playlistsBody.playlist.map(item => item.name);
+            const playlistNames = playlistsBody.playlist.map((item) => item.name);
             // 将歌单信息存入数据库
             for (let i = 0; i < playlistNames.length; i++) {
                 await db.insertAsync({
@@ -226,7 +226,7 @@ async function sync(client, selectName, machineId, selectPlaylist) {
     const playlistDetailBody = await playlistDetail.json();
     const playlistDetailSongs = playlistDetailBody.playlist.trackIds
         .slice(0, SONG_LIMIT)
-        .map(item => item.id)
+        .map((item) => item.id)
         .join(',');
     const songNames = await fetch(`http://music.163.com/api/song/detail/?id=&ids=[${playlistDetailSongs}]`);
     const songNamesBody = await songNames.json();
@@ -235,7 +235,7 @@ async function sync(client, selectName, machineId, selectPlaylist) {
     /* 查找同名歌单 */
     const playlist = await client.query('/playlists');
     console.log('♿️ - file: sync.mjs:32 - main - sync - playlist:', playlist.MediaContainer.Metadata);
-    const playlistName = playlist.MediaContainer.Metadata.filter(item => item.title === selectPlaylist);
+    const playlistName = playlist.MediaContainer.Metadata.filter((item) => item.title === selectPlaylist);
     if (!playlistName.length) {
         console.log('♿️ - file: sync.mjs:32 - main - sync - 未找到同名歌单');
         return;
@@ -251,8 +251,8 @@ async function sync(client, selectName, machineId, selectPlaylist) {
     }
 
     //比较两边的前10首歌曲，如果有不同的，则需要同步(需要按顺序插入本地歌单)
-    const yunSongs = songNamesBodySongs.map(item => item.name);
-    const plexSongs = localSongs.map(item => item.title);
+    const yunSongs = songNamesBodySongs.map((item) => item.name);
+    const plexSongs = localSongs.map((item) => item.title);
     //songNamesBodySongs
     console.log('♿️ - file: sync.mjs:32 - main - songNamesBodySongs:', yunSongs);
     //localSongs
@@ -274,13 +274,13 @@ async function sync(client, selectName, machineId, selectPlaylist) {
     // 给云音乐的歌曲设置标识，如果plex中有，则不同步
     const user = await db.findAsync({ type: 'user' });
     const syncSongs = await Promise.all(
-        songNamesBodySongs.map(async item => {
+        songNamesBodySongs.map(async (item) => {
             if (slicePlexSongs.includes(item.name)) {
                 item.sync = true;
             } else {
                 item.sync = false;
                 console.log('♿️ - file: sync.mjs:32 - main - item:', item.name);
-                const song = await song_url_v1({ id: item.id, level: 'jymaster', cookie: user[0].cookie });
+                const song = await song_url_v1({ id: item.id, level: 'hires', cookie: user[0].cookie });
                 const songBody = song.body;
                 // 下载歌曲
                 await download(songBody.data[0].url, item, songBody.data[0].type, user[0].cookie);
@@ -292,7 +292,7 @@ async function sync(client, selectName, machineId, selectPlaylist) {
     // 命令plex刷新音乐资料库
     // 先获取section的key
     const sections = await client.query('/library/sections');
-    const musicSection = sections.MediaContainer.Directory.filter(item => item.type === 'artist')[0];
+    const musicSection = sections.MediaContainer.Directory.filter((item) => item.type === 'artist')[0];
     await client.query(`/library/sections/${musicSection.key}/refresh`);
 
     // 等待扫描完毕 1分钟
@@ -307,18 +307,22 @@ async function sync(client, selectName, machineId, selectPlaylist) {
         const song = syncSongs[i];
         if (!song.sync) {
             const localsong = await client.find(
-                `/library/sections/${musicSection.key}/search?type=10&title=${encodeURIComponent(
-                    song.name
-                )}&grandparentTitle=${encodeURIComponent(song.artists.map(item => item.name).join('&'))}`
+                `/library/sections/${musicSection.key}/search?type=10&title=${encodeURIComponent(song.name)}`
             );
-            const findSong = localsong.find(item => item.title === song.name && item.grandparentTitle === song.artists.map(item => item.name).join('&') && item.parentTitle === song.album.name) ?? localsong[0]
+            const findSong =
+                localsong.find(
+                    (item) =>
+                        item.title === song.name &&
+                        item.grandparentTitle === song.artists.map((item) => item.name).join('&') &&
+                        item.parentTitle === song.album.name
+                ) ?? localsong[0];
             await client.putQuery(
                 `/playlists/${playlistName[0].ratingKey}/items?uri=server%3A%2F%2F${machineId}%2Fcom.plexapp.plugins.library%2Flibrary%2Fmetadata%2F${findSong.ratingKey}&includeExternalMedia=1&`
             );
             // 获取 playlistItemID
             const syncListNew = await client.query(`/playlists/${playlistName[0].ratingKey}/items`);
             const playlistItemID =
-                syncListNew.MediaContainer.Metadata.filter(item => item.title === song.name)[0]?.playlistItemID ?? 0;
+                syncListNew.MediaContainer.Metadata.filter((item) => item.title === song.name)[0]?.playlistItemID ?? 0;
             song.playlistItemID = playlistItemID;
             console.log(song.name, playlistItemID);
         }
@@ -348,7 +352,7 @@ async function main() {
         let selectPlaylist = '';
 
         const playlist = await db.findAsync({ type: 'playlist' });
-        const playlistNames = playlist.map(item => `${item.playlistId}(${item.playlistName})`);
+        const playlistNames = playlist.map((item) => `${item.playlistId}(${item.playlistName})`);
         if (playlist.length === 1) {
             selectName = playlist[0].playlistId;
             selectPlaylist = playlist[0].playlistName;
@@ -359,15 +363,15 @@ async function main() {
             PLAYLIST ??
             (await getUserInput(`请输入需要同步的歌单编号: ${playlistNames.join(',\n')}: `));
         console.log('♿️ - file: sync.mjs:32 - main - selectName:', selectName);
-        selectPlaylist = playlist.filter(item => item.playlistId === Number(selectName))[0].playlistName;
+        selectPlaylist = playlist.filter((item) => item.playlistId === Number(selectName))[0].playlistName;
 
         // 初始化 Plex
         const plexInfo = await db.findAsync({ type: 'plex' });
         let selectPlex = '';
         if (plexInfo.length > 1) {
-            const plexNames = plexInfo.map(item => `${item._id}(${item.server})`);
+            const plexNames = plexInfo.map((item) => `${item._id}(${item.server})`);
             const select = await getUserInput(`请输入需要同步的Plex服务器编号: ${plexNames.join(',\n')}: `);
-            selectPlex = plexInfo.filter(item => String(item._id) === select)[0];
+            selectPlex = plexInfo.filter((item) => String(item._id) === select)[0];
         } else {
             selectPlex = plexInfo[0];
         }
