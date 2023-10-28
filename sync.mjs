@@ -280,8 +280,13 @@ async function sync(client, selectName, machineId, selectPlaylist) {
             } else {
                 item.sync = false;
                 console.log('♿️ - file: sync.mjs:32 - main - item:', item.name);
-                const song = await song_url_v1({ id: item.id, level: 'hires', cookie: user[0].cookie });
-                const songBody = song.body;
+                let song = {};
+                song = await song_url_v1({ id: item.id, level: 'jymaster', cookie: user[0].cookie });
+                let songBody = song.body;
+                if (songBody.data[0].type !== 'flac' && songBody.data[0].type !== 'mp3') {
+                    song = await song_url_v1({ id: item.id, level: 'hires', cookie: user[0].cookie });
+                    songBody = song.body;
+                }
                 // 下载歌曲
                 await download(songBody.data[0].url, item, songBody.data[0].type, user[0].cookie);
             }
