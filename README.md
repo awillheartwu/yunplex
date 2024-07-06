@@ -44,7 +44,8 @@ $ node sync.mjs # 可以添加第二个参数，代表要同步的网易云歌�
 3. 请输入Plex的地址:
 4. 请输入Plex的端口:
 5. 请输入Plex的token:
-6. _（如果没有输入第二个参数）_ 请输入要同步的网易云歌单的id: 
+6. 请输入Plex的音乐库名称:
+7. _（如果在启动时没有输入第二个参数）_ 请输入要同步的网易云歌单的id: 
 
 输入后会打印plex和网易云的歌单列表，选择要同步的歌单的序号，回车即可开始同步
 
@@ -66,8 +67,15 @@ $ docker run -d --name yunplex yunplex  \
     -e PLEX_SERVER=your_plex_server \ # Plex服务器地址
     -e PLEX_PORT=your_plex_port \ # Plex服务器端口
     -e PLEX_TOKEN=your_plex_token \ # Plex服务器token
+    -e PLEX_SECTION=your_plex_section \ # 你的Plex音乐库的名称
     -v /mnt/nas:/mnt/nas \ # 冒号前面是宿主机的目录（也就是你plex音乐库的目录），冒号后面是docker内部的目录
 ```
+
+
+#### 注意!
+
+_如果想要同步"我喜欢的音乐"这个网易云默认的红心歌单,那你需要在 PLEX 中新建一个名为"**XX**喜欢的音乐"的歌单,此处的 XX 是你的网易云用户名.
+e.g. 比如你的网易云用户名为:ABC,那么你需要在 PLEX 中新建一个名为"ABC喜欢的音乐"的歌单_
 
 ## TODO
 

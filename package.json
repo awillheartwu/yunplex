@@ -20,7 +20,8 @@
         "cz-conventional-changelog-zh": "0.0.2",
         "eslint": "^8.34.0",
         "eslint-config-egg": "^7.1.0",
-        "prettier": "^2.8.4",
+        "prettier": "3.1.0",
+        "prettier-eslint": "^16.3.0",
         "standard-version": "^9.5.0"
     },
     "scripts": {

@@ -25,6 +25,7 @@ const PLAYLIST = process.env.PLAYLIST;
 const PLEX_SERVER = process.env.PLEX_SERVER;
 const PLEX_PORT = process.env.PLEX_PORT;
 const PLEX_TOKEN = process.env.PLEX_TOKEN;
+const PLEX_SECTION = process.env.PLEX_SECTION ?? '音乐';
 
 async function loginYun(phone, password) {
     const result = await login_cellphone({ phone, password });
@@ -69,7 +70,7 @@ async function download(url, songInfo, type, cookie) {
     // 下载歌词
     const lyricDownNew = await lyric_new({ id: songInfo.id, cookie: cookie });
     const lyricBodyNew = lyricDownNew.body;
-    await fs.writeFileSync(path.join(albumPath, `${title}.lrc`), lyricBodyNew.lrc.lyric);
+    await fs.writeFileSync(path.join(albumPath, `${title}.lrc`), lyricBodyNew?.lrc?.lyric);
 
     // 写入tags,判断是否为flac
     const pathName = path.join(albumPath, `${title}.${type}`);
@@ -209,8 +210,9 @@ async function setupDB() {
             const server = PLEX_SERVER ?? (await getUserInput('请输入Plex的地址: '));
             const port = PLEX_PORT ?? (await getUserInput('请输入Plex的端口: '));
             const token = PLEX_TOKEN ?? (await getUserInput('请输入Plex的token: '));
+            const section = PLEX_SECTION ?? (await getUserInput('请输入Plex的音乐库名称: '));
             // 将歌单信息存入数据库
-            await db.insertAsync({ type: 'plex', server, port, token });
+            await db.insertAsync({ type: 'plex', server, port, token, section });
         }
 
         return true;
@@ -219,7 +221,7 @@ async function setupDB() {
     }
 }
 
-async function sync(client, selectName, machineId, selectPlaylist) {
+async function sync(client, selectName, machineId, selectPlaylist, section) {
     console.log('♿️ - file: sync.mjs:32 - main - sync - 开始同步');
     // 初始化获取两边歌单
     const playlistDetail = await fetch(`https://music.163.com/api/v1/playlist/detail?id=${selectName}`);
@@ -291,13 +293,20 @@ async function sync(client, selectName, machineId, selectPlaylist) {
                 await download(songBody.data[0].url, item, songBody.data[0].type, user[0].cookie);
             }
             return item;
-        })
+        }),
     );
 
     // 命令plex刷新音乐资料库
     // 先获取section的key
     const sections = await client.query('/library/sections');
-    const musicSection = sections.MediaContainer.Directory.filter((item) => item.type === 'artist')[0];
+    const musicSections = sections?.MediaContainer?.Directory;
+    const musicSection = musicSections
+        ?.filter((item) => item?.type === 'artist')
+        .find((item) => item?.title === (section || PLEX_SECTION));
+    if (!musicSection) {
+        console.log('♿️ - file: sync.mjs:32 - main - 未找到音乐库');
+        return;
+    }
     await client.query(`/library/sections/${musicSection.key}/refresh`);
 
     // 等待扫描完毕 1分钟
@@ -312,17 +321,18 @@ async function sync(client, selectName, machineId, selectPlaylist) {
         const song = syncSongs[i];
         if (!song.sync) {
             const localsong = await client.find(
-                `/library/sections/${musicSection.key}/search?type=10&title=${encodeURIComponent(song.name)}`
+                `/library/sections/${musicSection.key}/search?type=10&title=${encodeURIComponent(song.name)}`,
             );
             const findSong =
                 localsong.find(
                     (item) =>
-                        item.title === song.name &&
-                        item.grandparentTitle === song.artists.map((item) => item.name).join('&') &&
-                        item.parentTitle === song.album.name
+                        item.title.toLowerCase() === song.name.toLowerCase() &&
+                        item.grandparentTitle.toLowerCase() ===
+                            song.artists.map((item) => item.name.toLowerCase()).join('&') &&
+                        item.parentTitle.toLowerCase() === song.album.name.toLowerCase(),
                 ) ?? localsong[0];
             await client.putQuery(
-                `/playlists/${playlistName[0].ratingKey}/items?uri=server%3A%2F%2F${machineId}%2Fcom.plexapp.plugins.library%2Flibrary%2Fmetadata%2F${findSong.ratingKey}&includeExternalMedia=1&`
+                `/playlists/${playlistName[0].ratingKey}/items?uri=server%3A%2F%2F${machineId}%2Fcom.plexapp.plugins.library%2Flibrary%2Fmetadata%2F${findSong.ratingKey}&includeExternalMedia=1&`,
             );
             // 获取 playlistItemID
             const syncListNew = await client.query(`/playlists/${playlistName[0].ratingKey}/items`);
@@ -336,7 +346,7 @@ async function sync(client, selectName, machineId, selectPlaylist) {
     // 倒着插回去，这样才能保持顺序
     for (let i = syncSongs.length - 1; i >= 0; i--) {
         const song = syncSongs[i];
-        if (!song.sync && song.playlistItemID) {
+        if (!song.sync && (song.playlistItemID === 0 || song.playlistItemID)) {
             // 挪到最前面
             await client.putQuery(`/playlists/${playlistName[0].ratingKey}/items/${song.playlistItemID}/move`);
         }
@@ -400,10 +410,10 @@ async function main() {
         // 每30分钟执行一次同步函数
         const intervalInMilliseconds = SCAN_INTERVAL * 60 * 1000;
         // 执行一次同步函数
-        await sync(client, selectName, machineId, selectPlaylist);
+        await sync(client, selectName, machineId, selectPlaylist, selectPlex?.section);
         // 设置定时任务
         setInterval(async () => {
-            await sync(client, selectName, machineId, selectPlaylist);
+            await sync(client, selectName, machineId, selectPlaylist, selectPlex?.section);
         }, intervalInMilliseconds);
     } catch (error) {
         console.log(error);
