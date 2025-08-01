@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import NodeID3 from 'node-id3';
 import flacMetadata from 'metaflac-js';
+import { execSync } from 'child_process';
 import dayjs from 'dayjs';
 import pkg from 'NeteaseCloudMusicApi';
 const { login_status, lyric_new, user_playlist, song_url_v1 } = pkg;
@@ -36,6 +37,26 @@ const LEVEL_ENUM = {
     超清母带: 'jymaster',
 };
 const LEVEL = LEVEL_ENUM[process.env?.LEVEL] ?? 'jymaster'; // 默认使用超清母带
+
+async function writeFlacTagsAndCover(pathName, tagsObj, imageBuffer) {
+    // 1. 写入文本tag
+    for (const [key, value] of Object.entries(tagsObj)) {
+        execSync(`metaflac --remove-tag=${key} "${pathName}"`);
+        execSync(`metaflac --set-tag="${key}=${value}" "${pathName}"`);
+    }
+    // 2. 写入图片tag（cover）
+    if (imageBuffer) {
+        // 先存成临时文件，注意扩展名和类型（网易云通常都是jpg）
+        const tempCoverPath = path.join(path.dirname(pathName), 'cover.jpg');
+        fs.writeFileSync(tempCoverPath, Buffer.from(imageBuffer));
+        // 先清空已有图片tag（防止重复多张）
+        execSync(`metaflac --remove --block-type=PICTURE "${pathName}"`);
+        // 再写入
+        execSync(`metaflac --import-picture-from="${tempCoverPath}" "${pathName}"`);
+        // 可以考虑删除临时cover文件（可选）
+        // fs.unlinkSync(tempCoverPath);
+    }
+}
 
 async function checkCookieValid(cookie) {
     try {
@@ -102,23 +123,36 @@ async function download(url, songInfo, type, cookie) {
     // 写入tags,判断是否为flac
     const pathName = path.join(albumPath, `${title}.${type}`);
     if (type === 'flac') {
-        const flac = new flacMetadata(pathName);
-        flac.setTag(`TITLE=${title}`);
-        flac.setTag(`ARTIST=${artist}`);
-        flac.setTag(`ALBUM=${album}`);
-        flac.setTag(`TRACKNUMBER=${trackNumber}`);
-        flac.setTag(`YEAR=${year}`);
-        flac.setTag(`PERFORMERINFO=${artist}`);
+        try {
+            const flac = new flacMetadata(pathName);
+            flac.setTag(`TITLE=${title}`);
+            flac.setTag(`ARTIST=${artist}`);
+            flac.setTag(`ALBUM=${album}`);
+            flac.setTag(`TRACKNUMBER=${trackNumber}`);
+            flac.setTag(`YEAR=${year}`);
+            flac.setTag(`PERFORMERINFO=${artist}`);
 
-        const MAX_SIZE = 16777215; // 16.7 MB in bytes
-        if (imageBuffer && imageBuffer.byteLength <= MAX_SIZE) {
-            console.log(' imageBuffer.byteLength', imageBuffer.byteLength);
-            flac.importPictureFromBuffer(Buffer.from(imageBuffer));
-        } else {
-            console.warn('Image is too large. Skipping adding image to FLAC.');
+            const MAX_SIZE = 16777215; // 16.7 MB in bytes
+            if (imageBuffer && imageBuffer.byteLength <= MAX_SIZE) {
+                console.log(' imageBuffer.byteLength', imageBuffer.byteLength);
+                flac.importPictureFromBuffer(Buffer.from(imageBuffer));
+            } else {
+                console.warn('Image is too large. Skipping adding image to FLAC.');
+            }
+            await flac.save();
+        } catch (e) {
+            console.warn('FLAC tag write failed:', e);
+            const tags = {
+                TITLE: title,
+                ARTIST: artist,
+                ALBUM: album,
+                TRACKNUMBER: trackNumber,
+                YEAR: year,
+                PERFORMERINFO: artist,
+            };
+            await writeFlacTagsAndCover(pathName, tags, imageBuffer);
+            console.log('FLAC tags written successfully using fallback method.');
         }
-
-        await flac.save();
     } else {
         const tags = {
             title: title,
