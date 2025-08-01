@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [2.0.1](https://github.com/awillheartwu/yunplex/compare/v2.0.0...v2.0.1) (2025-08-01)
+
 ## [2.0.0](https://github.com/awillheartwu/yunplex/compare/v1.0.4...v2.0.0) (2025-06-30)
 
 
